@@ -21,7 +21,8 @@ class Program
 
 		using var schemaRegistry = new CachedSchemaRegistryClient(schemaRegistryConfig);
 		using var consumer = new ConsumerBuilder<string, Patient>(consumerConfig)
-			.SetValueDeserializer(new AvroDeserializer<Patient>(schemaRegistry).AsSyncOverAsync())
+			.SetValueDeserializer(new AvroDeserializer<Patient>(schemaRegistry)
+			.AsSyncOverAsync())
 			.Build();
 
 		consumer.Subscribe("patient-topic");
