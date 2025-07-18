@@ -1,0 +1,10 @@
+﻿{
+  "type": "record",
+  "namespace": "Example.PoC",
+  "name": "Patient",
+  "fields": [
+    {"name": "PatientId", "type": "string"},
+    {"name": "Name", "type": "string"},
+    {"name": "DateOfBirth", "type": "string"}
+  ]
+}

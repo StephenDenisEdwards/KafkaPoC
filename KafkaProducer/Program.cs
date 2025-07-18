@@ -1,42 +1,40 @@
 ﻿using System;
-using System.Threading;
+using System.Threading.Tasks;
 using Confluent.Kafka;
+using Confluent.SchemaRegistry;
+using Confluent.SchemaRegistry.Serdes;
+using Example.PoC;
 
 class Program
 {
-	static void Main(string[] args)
+	static async Task Main(string[] args)
 	{
-		var config = new ConsumerConfig
+		var schemaRegistryConfig = new SchemaRegistryConfig { Url = "http://localhost:8081" };
+		var producerConfig = new ProducerConfig { BootstrapServers = "localhost:9092" };
+
+		using var schemaRegistry = new CachedSchemaRegistryClient(schemaRegistryConfig);
+		using var producer = new ProducerBuilder<string, Patient>(producerConfig)
+			.SetValueSerializer(new AvroSerializer<Patient>(schemaRegistry))
+			.Build();
+
+		for (int patientId = 123456; patientId < 123470; patientId++)
 		{
-			BootstrapServers = "localhost:9092",
-			GroupId = "my-group",
-			AutoOffsetReset = AutoOffsetReset.Earliest
-		};
-
-		using var consumer = new ConsumerBuilder<Ignore, string>(config).Build();
-		consumer.Subscribe("test-topic");
-
-		Console.WriteLine("Kafka Consumer started, waiting for messages...");
-
-		var cts = new CancellationTokenSource();
-
-		Console.CancelKeyPress += (_, e) => {
-			e.Cancel = true; // prevent immediate process exit
-			cts.Cancel();
-		};
-
-		try
-		{
-			while (!cts.Token.IsCancellationRequested)
+			var patient = new Patient
 			{
-				var cr = consumer.Consume(cts.Token);
-				Console.WriteLine($"Received message '{cr.Message.Value}' from partition {cr.Partition}, offset {cr.Offset}");
-			}
-		}
-		catch (OperationCanceledException) { }
-		finally
-		{
-			consumer.Close();
+				PatientId = patientId.ToString(),
+				Name = "John Doe",
+				DateOfBirth = "1980-01-01"
+			};
+
+			var result = await producer.ProduceAsync("patient-topic", new Message<string, Patient>
+			{
+				Key = patient.PatientId,
+				Value = patient
+			});
+
+			Console.WriteLine($"Sent Patient record to partition {result.Partition}, offset {result.Offset}");
+
+			await Task.Delay(1000);
 		}
 	}
 }
