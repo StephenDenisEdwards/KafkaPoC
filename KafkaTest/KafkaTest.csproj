@@ -7,34 +7,31 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <ItemGroup>
-		  <!-- Kafka client -->
-		  <PackageReference Include="Confluent.Kafka" Version="2.11.0" />
+	<ItemGroup>
+		<!-- Kafka client -->
+		<PackageReference Include="Confluent.Kafka" Version="2.11.0" />
 
-		  <!-- Schema Registry client -->
-		  <PackageReference Include="Confluent.SchemaRegistry" Version="2.11.0" />
+		<!-- Schema Registry client -->
+		<PackageReference Include="Confluent.SchemaRegistry" Version="2.11.0" />
 
-		  <!-- Avro Serdes (depends on Apache.Avro internally) -->
-		  <PackageReference Include="Confluent.SchemaRegistry.Serdes.Avro" Version="2.1.0" />
+		<!-- Avro Serdes (depends on Apache.Avro internally) -->
+		<PackageReference Include="Confluent.SchemaRegistry.Serdes.Avro" Version="2.1.0" />
 
-		  <!-- Apache Avro types (GenericRecord, Schema.Parser, etc.) -->
-		  <PackageReference Include="Apache.Avro" Version="1.11.0" />
+		<!-- Apache Avro types (GenericRecord, Schema.Parser, etc.) -->
+		<PackageReference Include="Apache.Avro" Version="1.11.0" />
 
-		  <!-- Polly for retry policies -->
-		  <PackageReference Include="Polly" Version="7.2.3" />
+		<!-- Polly for retry policies -->
+		<PackageReference Include="Polly" Version="7.2.3" />
 
-		  <!-- FluentValidation for business‐rule validation -->
-		  <PackageReference Include="FluentValidation" Version="11.5.0" />
+		<!-- FluentValidation for business‐rule validation -->
+		<PackageReference Include="FluentValidation" Version="11.5.0" />
 
-
-
-
-	  <PackageReference Include="coverlet.collector" Version="6.0.2" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageReference Include="Polly" Version="8.6.2" />
-    <PackageReference Include="xunit" Version="2.9.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-  </ItemGroup>
+		<PackageReference Include="coverlet.collector" Version="6.0.2" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+		<PackageReference Include="Polly" Version="8.6.2" />
+		<PackageReference Include="xunit" Version="2.9.2" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+	</ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
