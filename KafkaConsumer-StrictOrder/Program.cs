@@ -1,17 +1,16 @@
 ﻿// Program.cs
+
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
+using Confluent.Kafka.SyncOverAsync;
 using Confluent.SchemaRegistry;
 using Confluent.SchemaRegistry.Serdes;
-using Example.PoC;   // your generated Patient class
+using Example.PoC;
 using Polly;
 using Polly.Retry;
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-using Confluent.Kafka.SyncOverAsync;
+// your generated Patient class
 
-namespace AvroOrderedConsumer
+namespace KafkaConsumer_StrictOrder
 {
 	class Program
 	{
