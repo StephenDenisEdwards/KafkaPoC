@@ -7,7 +7,6 @@ using Example.PoC;   // your generated Patient class
 using Polly;
 using Polly.Retry;
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Confluent.Kafka.SyncOverAsync;
@@ -25,14 +24,17 @@ namespace AvroOrderedConsumer
 		static async Task Main()
 		{
 			// 1) Ensure topics exist
-			var adminConfig = new AdminClientConfig { BootstrapServers = BootstrapServers };
-			using var adminClient = new AdminClientBuilder(adminConfig).Build();
+			using var admin = new AdminClientBuilder(
+				new AdminClientConfig { BootstrapServers = BootstrapServers }
+			).Build();
+			await EnsureTopicExistsAsync(admin, Topic, 1, 1);
+			await EnsureTopicExistsAsync(admin, DeadLetterTopic, 1, 1);
 
-			await EnsureTopicExistsAsync(adminClient, Topic, partitions: 1, replicationFactor: 1);
-			await EnsureTopicExistsAsync(adminClient, DeadLetterTopic, partitions: 1, replicationFactor: 1);
+			// 2) Start the producer in its own background Task
+			var producerTask = StartProducerTask(Topic, messageCount: 50);
 
-			// 2) Build Schema Registry, Consumer, and DLT Producer
-			var schemaRegistryConfig = new SchemaRegistryConfig { Url = SchemaRegistryUrl };
+			// 3) Set up consumer + DLT producer + retry policy
+			var registryConfig = new SchemaRegistryConfig { Url = SchemaRegistryUrl };
 			var consumerConfig = new ConsumerConfig
 			{
 				BootstrapServers = BootstrapServers,
@@ -43,25 +45,24 @@ namespace AvroOrderedConsumer
 			};
 			var producerConfig = new ProducerConfig { BootstrapServers = BootstrapServers };
 
-			using var registry = new CachedSchemaRegistryClient(schemaRegistryConfig);
+			using var registry = new CachedSchemaRegistryClient(registryConfig);
 			using var consumer = new ConsumerBuilder<Ignore, Patient>(consumerConfig)
-				.SetValueDeserializer(new AvroDeserializer<Patient>(registry).AsSyncOverAsync())
-				.Build();
+									.SetValueDeserializer(new AvroDeserializer<Patient>(registry).AsSyncOverAsync())
+									.Build();
 			using var dlProducer = new ProducerBuilder<string, Patient>(producerConfig)
-				.SetValueSerializer(new AvroSerializer<Patient>(registry))
-				.Build();
+									.SetValueSerializer(new AvroSerializer<Patient>(registry))
+									.Build();
 
-			// 3) Polly retry policy (3 attempts, exponential backoff)
 			AsyncRetryPolicy retryPolicy = Policy
 				.Handle<Exception>(IsRetryable)
 				.WaitAndRetryAsync(
 					retryCount: 3,
-					sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
-					onRetry: (ex, wait, retryCount, ctx) =>
-						Console.WriteLine($"[Retry {retryCount}] waiting {wait:g}: {ex.Message}")
+					sleepDurationProvider: i => TimeSpan.FromSeconds(Math.Pow(2, i)),
+					onRetry: (ex, wait, i, ctx) =>
+						Console.WriteLine($"[Retry {i}] waiting {wait:g}: {ex.Message}")
 				);
 
-			// 4) Start consuming
+			// 4) Consumer loop
 			consumer.Subscribe(Topic);
 			Console.CancelKeyPress += (_, e) =>
 			{
@@ -69,7 +70,7 @@ namespace AvroOrderedConsumer
 				consumer.Close();
 			};
 
-			Console.WriteLine("Starting Avro-ordered consumer loop...");
+			Console.WriteLine("Consumer loop starting; producer is running in background...");
 			while (true)
 			{
 				try
@@ -82,11 +83,46 @@ namespace AvroOrderedConsumer
 					break;
 				}
 			}
+
+			// Optionally wait for the producer to finish
+			await producerTask;
 		}
 
 		/// <summary>
-		/// Creates the given topic if it does not already exist.
+		/// Encapsulates all producer logic, runs on a background Task.
 		/// </summary>
+		private static Task StartProducerTask(string topic, int messageCount)
+			=> Task.Run(async () =>
+			{
+				var producerConfig = new ProducerConfig { BootstrapServers = BootstrapServers };
+				var registryConfig = new SchemaRegistryConfig { Url = SchemaRegistryUrl };
+
+				using var registry = new CachedSchemaRegistryClient(registryConfig);
+				using var producer = new ProducerBuilder<Null, Patient>(producerConfig)
+					.SetValueSerializer(new AvroSerializer<Patient>(registry))
+					.Build();
+
+				Console.WriteLine($"[Producer] Sending {messageCount} Patient messages to '{topic}'...");
+				for (int i = 1; i <= messageCount; i++)
+				{
+					var patient = new Patient
+					{
+						PatientId = i.ToString("D4"),
+						Name = $"Patient {i}",
+						DateOfBirth = DateTime.UtcNow.ToString("o")
+					};
+
+					var tp = new TopicPartition(topic, new Partition(0));
+					await producer.ProduceAsync(tp,
+						new Message<Null, Patient> { Value = patient });
+					Console.WriteLine($"[Producer] Produced PatientId={patient.PatientId}");
+					await Task.Delay(100); // simulate interval
+				}
+
+				producer.Flush(TimeSpan.FromSeconds(5));
+				Console.WriteLine("[Producer] Done producing messages.");
+			});
+
 		private static async Task EnsureTopicExistsAsync(
 			IAdminClient adminClient,
 			string topicName,
@@ -103,22 +139,17 @@ namespace AvroOrderedConsumer
 
 			try
 			{
-				Console.WriteLine($"Creating topic '{topicName}'...");
+				Console.WriteLine($"[Admin] Creating topic '{topicName}'...");
 				await adminClient.CreateTopicsAsync(new[] { spec });
-				Console.WriteLine($"Topic '{topicName}' created.");
+				Console.WriteLine($"[Admin] Topic '{topicName}' created.");
 			}
 			catch (CreateTopicsException e)
 			{
-				var result = e.Results[0];
-				if (result.Error.Code == ErrorCode.TopicAlreadyExists)
-				{
-					Console.WriteLine($"Topic '{topicName}' already exists; continuing.");
-				}
+				var r = e.Results?[0];
+				if (r != null && r.Error.Code == ErrorCode.TopicAlreadyExists)
+					Console.WriteLine($"[Admin] Topic '{topicName}' already exists.");
 				else
-				{
-					Console.WriteLine($"Error creating topic '{topicName}': {result.Error.Reason}");
 					throw;
-				}
 			}
 		}
 
@@ -130,17 +161,13 @@ namespace AvroOrderedConsumer
 		{
 			try
 			{
-				// Retryable business logic
 				await retryPolicy.ExecuteAsync(() => HandlePatientAsync(cr.Message.Value));
-
-				// Commit on success
 				consumer.Commit(cr);
-				Console.WriteLine($"[Commit] Offset {cr.Offset.Value} (PatientId={cr.Message.Value.PatientId})");
+				Console.WriteLine($"[Consumer] Committed offset {cr.Offset.Value} (PatientId={cr.Message.Value.PatientId})");
 			}
 			catch (Exception ex)
 			{
-				// Dead-letter on final failure
-				Console.WriteLine($"[DLT] Offset {cr.Offset.Value} → {ex.Message}");
+				Console.WriteLine($"[Consumer→DLT] Offset {cr.Offset.Value} → {ex.Message}");
 				var dltMsg = new Message<string, Patient>
 				{
 					Key = cr.Message.Value.PatientId,
@@ -154,17 +181,11 @@ namespace AvroOrderedConsumer
 
 		private static Task HandlePatientAsync(Patient p)
 		{
-			// TODO: replace with real processing
-			Console.WriteLine($"Processing PatientId={p.PatientId}, Name={p.Name}, DOB={p.DateOfBirth}");
+			Console.WriteLine($"[Handler] Processing PatientId={p.PatientId}, Name={p.Name}");
 			return Task.CompletedTask;
 		}
 
 		private static bool IsRetryable(Exception ex)
-		{
-			// e.g., network hiccups, transient Kafka exceptions, etc.
-			if (ex is TimeoutException) return true;
-			if (ex is KafkaException ke && !ke.Error.IsFatal) return true;
-			return false;
-		}
+			=> ex is TimeoutException || (ex is KafkaException ke && !ke.Error.IsFatal);
 	}
 }
