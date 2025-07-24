@@ -71,8 +71,7 @@ public class PatientConsumer : IPatientConsumer, IDisposable
 						Key = cr.Message.Value.PatientId,
 						Value = cr.Message.Value,
 						Headers = cr.Message.Headers
-					}
-				);
+					}, cancellation);
 				_consumer.Commit(cr);
 			}
 		}
