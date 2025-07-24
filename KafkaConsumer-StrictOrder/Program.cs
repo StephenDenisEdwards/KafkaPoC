@@ -1,11 +1,13 @@
 ﻿// Program.cs
 using Confluent.Kafka;
+using Confluent.Kafka.Admin;
 using Confluent.SchemaRegistry;
 using Confluent.SchemaRegistry.Serdes;
 using Example.PoC;   // your generated Patient class
 using Polly;
 using Polly.Retry;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Confluent.Kafka.SyncOverAsync;
@@ -22,14 +24,21 @@ namespace AvroOrderedConsumer
 
 		static async Task Main()
 		{
-			// 1) Configure Schema Registry + Consumer + DLT Producer
+			// 1) Ensure topics exist
+			var adminConfig = new AdminClientConfig { BootstrapServers = BootstrapServers };
+			using var adminClient = new AdminClientBuilder(adminConfig).Build();
+
+			await EnsureTopicExistsAsync(adminClient, Topic, partitions: 1, replicationFactor: 1);
+			await EnsureTopicExistsAsync(adminClient, DeadLetterTopic, partitions: 1, replicationFactor: 1);
+
+			// 2) Build Schema Registry, Consumer, and DLT Producer
 			var schemaRegistryConfig = new SchemaRegistryConfig { Url = SchemaRegistryUrl };
 			var consumerConfig = new ConsumerConfig
 			{
 				BootstrapServers = BootstrapServers,
 				GroupId = GroupId,
 				AutoOffsetReset = AutoOffsetReset.Earliest,
-				EnableAutoCommit = false,             // manual commit
+				EnableAutoCommit = false,
 				IsolationLevel = IsolationLevel.ReadCommitted
 			};
 			var producerConfig = new ProducerConfig { BootstrapServers = BootstrapServers };
@@ -42,7 +51,7 @@ namespace AvroOrderedConsumer
 				.SetValueSerializer(new AvroSerializer<Patient>(registry))
 				.Build();
 
-			// 2) Build a Polly retry policy (3 tries, exponential backoff)
+			// 3) Polly retry policy (3 attempts, exponential backoff)
 			AsyncRetryPolicy retryPolicy = Policy
 				.Handle<Exception>(IsRetryable)
 				.WaitAndRetryAsync(
@@ -52,6 +61,7 @@ namespace AvroOrderedConsumer
 						Console.WriteLine($"[Retry {retryCount}] waiting {wait:g}: {ex.Message}")
 				);
 
+			// 4) Start consuming
 			consumer.Subscribe(Topic);
 			Console.CancelKeyPress += (_, e) =>
 			{
@@ -74,6 +84,44 @@ namespace AvroOrderedConsumer
 			}
 		}
 
+		/// <summary>
+		/// Creates the given topic if it does not already exist.
+		/// </summary>
+		private static async Task EnsureTopicExistsAsync(
+			IAdminClient adminClient,
+			string topicName,
+			int partitions,
+			short replicationFactor
+		)
+		{
+			var spec = new TopicSpecification
+			{
+				Name = topicName,
+				NumPartitions = partitions,
+				ReplicationFactor = replicationFactor
+			};
+
+			try
+			{
+				Console.WriteLine($"Creating topic '{topicName}'...");
+				await adminClient.CreateTopicsAsync(new[] { spec });
+				Console.WriteLine($"Topic '{topicName}' created.");
+			}
+			catch (CreateTopicsException e)
+			{
+				var result = e.Results[0];
+				if (result.Error.Code == ErrorCode.TopicAlreadyExists)
+				{
+					Console.WriteLine($"Topic '{topicName}' already exists; continuing.");
+				}
+				else
+				{
+					Console.WriteLine($"Error creating topic '{topicName}': {result.Error.Reason}");
+					throw;
+				}
+			}
+		}
+
 		private static async Task ProcessRecord(
 			ConsumeResult<Ignore, Patient> cr,
 			AsyncRetryPolicy retryPolicy,
@@ -82,19 +130,17 @@ namespace AvroOrderedConsumer
 		{
 			try
 			{
-				// 3) Retryable business logic
+				// Retryable business logic
 				await retryPolicy.ExecuteAsync(() => HandlePatientAsync(cr.Message.Value));
 
-				// 4) On success, commit offset
+				// Commit on success
 				consumer.Commit(cr);
 				Console.WriteLine($"[Commit] Offset {cr.Offset.Value} (PatientId={cr.Message.Value.PatientId})");
 			}
 			catch (Exception ex)
 			{
-				// 5) Retries exhausted or non-retryable → dead-letter
+				// Dead-letter on final failure
 				Console.WriteLine($"[DLT] Offset {cr.Offset.Value} → {ex.Message}");
-
-				// Use PatientId as DLT key for traceability
 				var dltMsg = new Message<string, Patient>
 				{
 					Key = cr.Message.Value.PatientId,
@@ -102,23 +148,20 @@ namespace AvroOrderedConsumer
 					Headers = cr.Message.Headers
 				};
 				await dlProducer.ProduceAsync(DeadLetterTopic, dltMsg);
-
-				// Commit so we skip this bad record next time
 				consumer.Commit(cr);
 			}
 		}
 
 		private static Task HandlePatientAsync(Patient p)
 		{
-			// TODO: your actual work here.
-			// For demo, just print:
+			// TODO: replace with real processing
 			Console.WriteLine($"Processing PatientId={p.PatientId}, Name={p.Name}, DOB={p.DateOfBirth}");
 			return Task.CompletedTask;
 		}
 
 		private static bool IsRetryable(Exception ex)
 		{
-			// e.g. network hiccups, transient Kafka exceptions, etc.
+			// e.g., network hiccups, transient Kafka exceptions, etc.
 			if (ex is TimeoutException) return true;
 			if (ex is KafkaException ke && !ke.Error.IsFatal) return true;
 			return false;
