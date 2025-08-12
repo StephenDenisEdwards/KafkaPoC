@@ -135,7 +135,7 @@ public class TopicNameStrategyTests
 	}
 
 	[Fact]
-	public async Task Should_Reject_Incompatible_Value_Change()
+	public async Task Should_Reject_Incompatible_Value_Change_Old()
 	{
 		using var sr = new CachedSchemaRegistryClient(new SchemaRegistryConfig
 		{
@@ -198,4 +198,71 @@ public class TopicNameStrategyTests
 			});
 		});
 	}
+
+	[Fact]
+	public async Task Should_Reject_Incompatible_Value_Change()
+	{
+		using var sr = new CachedSchemaRegistryClient(new SchemaRegistryConfig
+		{
+			Url = SchemaRegistryUrl
+		});
+
+		// Force compatibility mode first
+		await sr.UpdateCompatibilityAsync(Compatibility.Backward, $"{Topic}-value");
+
+		var keyAvroCfg = new AvroSerializerConfig { SubjectNameStrategy = SubjectNameStrategy.Topic };
+		var valAvroCfg = new AvroSerializerConfig { SubjectNameStrategy = SubjectNameStrategy.Topic };
+
+		var producerCfg = new ProducerConfig
+		{
+			BootstrapServers = BootstrapServers,
+			Acks = Acks.All,
+			EnableIdempotence = true
+		};
+
+		// Ensure baseline version exists
+		using (var p =
+			new ProducerBuilder<GenericRecord, GenericRecord>(producerCfg)
+				.SetKeySerializer(new AvroSerializer<GenericRecord>(sr, keyAvroCfg))
+				.SetValueSerializer(new AvroSerializer<GenericRecord>(sr, valAvroCfg))
+				.Build())
+		{
+			await p.ProduceAsync(Topic, new Message<GenericRecord, GenericRecord>
+			{
+				Key = MakeKeyV1("order-100"),
+				Value = MakeValueV1("order-100", "Eve", 10.0)
+			});
+		}
+
+		// Incompatible schema: removed required field "customer"
+		var incompatible = Schema.Parse(@"
+	    {
+	      ""type"": ""record"",
+	      ""name"": ""Order"",
+	      ""namespace"": ""demo.avro"",
+	      ""fields"": [
+	        { ""name"": ""orderId"", ""type"": ""string"" }
+	      ]
+	    }");
+
+		var badValue = new GenericRecord((RecordSchema)incompatible);
+		badValue.Add("orderId", "order-999");
+
+		using var pBad =
+			new ProducerBuilder<GenericRecord, GenericRecord>(producerCfg)
+				.SetKeySerializer(new AvroSerializer<GenericRecord>(sr, keyAvroCfg))
+				.SetValueSerializer(new AvroSerializer<GenericRecord>(sr, valAvroCfg))
+				.Build();
+
+		// Expect SchemaRegistryException here
+		await Assert.ThrowsAsync<SchemaRegistryException>(async () =>
+		{
+			await pBad.ProduceAsync(Topic, new Message<GenericRecord, GenericRecord>
+			{
+				Key = MakeKeyV1("order-999"),
+				Value = badValue
+			});
+		});
+	}
+
 }
