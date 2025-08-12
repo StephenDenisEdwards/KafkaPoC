@@ -5,7 +5,7 @@ using Polly.Retry;
 
 namespace KafkaConsumer_StrictOrder_Test
 {
-	public class OrderedProcessingTests
+	public class OrderedProcessingIntegrationTests
 	{
 		private const string BootstrapServers = "localhost:9092";
 		private const string SchemaRegistryUrl = "localhost:8081";

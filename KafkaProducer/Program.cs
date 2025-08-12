@@ -12,9 +12,15 @@ class Program
 		var schemaRegistryConfig = new SchemaRegistryConfig { Url = "http://localhost:8081" };
 		var producerConfig = new ProducerConfig { BootstrapServers = "localhost:9092" };
 
+		// Enable auto schema registration
+		var avroSerializerConfig = new AvroSerializerConfig
+		{
+			AutoRegisterSchemas = true
+		};
+
 		using var schemaRegistry = new CachedSchemaRegistryClient(schemaRegistryConfig);
 		using var producer = new ProducerBuilder<string, Patient>(producerConfig)
-			.SetValueSerializer(new AvroSerializer<Patient>(schemaRegistry))
+			.SetValueSerializer(new AvroSerializer<Patient>(schemaRegistry, avroSerializerConfig))
 			.Build();
 
 		for (int patientId = 123456; patientId < 123470; patientId++)

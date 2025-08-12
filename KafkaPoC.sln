@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KafkaConsumer-StrictOrder",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KafkaConsumer-StrictOrder-Test", "KafkaConsumer-StrictOrder-Test\KafkaConsumer-StrictOrder-Test.csproj", "{9D9A391D-457C-40DE-985A-41AF39584D06}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kafka.TopicNameStrategy.Tests", "Kafka.TopicNameStrategy.Tests\Kafka.TopicNameStrategy.Tests.csproj", "{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -89,6 +91,18 @@ Global
 		{9D9A391D-457C-40DE-985A-41AF39584D06}.Release|x64.Build.0 = Release|Any CPU
 		{9D9A391D-457C-40DE-985A-41AF39584D06}.Release|x86.ActiveCfg = Release|Any CPU
 		{9D9A391D-457C-40DE-985A-41AF39584D06}.Release|x86.Build.0 = Release|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Debug|x64.Build.0 = Debug|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Debug|x86.Build.0 = Debug|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Release|x64.ActiveCfg = Release|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Release|x64.Build.0 = Release|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Release|x86.ActiveCfg = Release|Any CPU
+		{FDE39D0D-A2DF-411B-AF9A-FE54FECE62EB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
